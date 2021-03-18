@@ -5,14 +5,16 @@
 
 ## Usage
 ```
-usage: pymin_reqs [-h] [-d DIRECTORY] [-o] [-v] [--outfile OUTFILE]
+usage: pymin_reqs [-h] [-d DIRECTORY] [-f] [-v] [-o OUTFILE]
 
 optional arguments:
   -h, --help            show this help message and exit
   -d DIRECTORY, --directory DIRECTORY
-  -o, --overwrite
+                        Specify the input directory. Default: '.'
+  -f, --force
   -v, --verbose
-  --outfile OUTFILE
+  -o OUTFILE, --outfile OUTFILE
+                        Specify the output file. Default 'requirements.txt'
 ```
 ### Example Usage
 > `pymin_reqs`

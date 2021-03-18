@@ -63,7 +63,7 @@ def make_minimal_reqs(directory, outfile, overwrite=False, verbose=False):
         with open(outfile, "w") as of:
             _make_minimal_reqs(directory, of, overwrite, verbose)
     else:
-        _make_minimal_reqs(directory, of, overwrite, verbose)
+        _make_minimal_reqs(directory, outfile, overwrite, verbose)
 
 def main():
     parser = argparse.ArgumentParser()
