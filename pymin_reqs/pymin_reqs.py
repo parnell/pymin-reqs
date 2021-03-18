@@ -22,15 +22,21 @@ def _add_to_dict(d, imp):
         d[imp.split(".")[0].lower()] += 1
 
 
-def get_dir_installs(indir, verbose=False):
+def get_dir_installs(indir, verbose=False, ignore_errors=False):
     imports = defaultdict(int)
     if verbose:
         print(f"# Parsing Files")
     for infile in glob.glob(f"{indir}/**/*.py", recursive=True):
         if verbose:
             print(f"Parsing {infile}")
-        with open(infile) as f:
-            tree = ast.parse(f.read())
+        try:
+            with open(infile) as f:
+                tree = ast.parse(f.read())
+        except Exception as e:
+            if ignore_errors:
+                print(f"{e}", file=sys.stderr)
+            else:
+                raise
         for n in ast.walk(tree):
             if isinstance(n, ast.Import):
                 for n2 in n.names:
@@ -42,8 +48,8 @@ def get_dir_installs(indir, verbose=False):
     return imports
 
 
-def _make_minimal_reqs(directory, outpipe, overwrite=False, verbose=False):
-    cl = get_dir_installs(directory, verbose)
+def _make_minimal_reqs(directory, outpipe, overwrite=False, verbose=False, ignore_errors=False):
+    cl = get_dir_installs(directory, verbose, ignore_errors)
     d = get_pip_installs()
     if verbose:
         print(f"# Found minimal imports")
@@ -54,22 +60,23 @@ def _make_minimal_reqs(directory, outpipe, overwrite=False, verbose=False):
             outpipe.write(f"{d[m]}\n")
 
 
-def make_minimal_reqs(directory, outfile, overwrite=False, verbose=False):
+def make_minimal_reqs(directory, outfile, overwrite=False, verbose=False, ignore_errors=False):
     if isinstance(outfile, str):
         if not overwrite and os.path.exists(outfile):
             raise IOError(
                 f"Exception: File '{outfile}' already exists. Use --overwrite to write over"
             )
         with open(outfile, "w") as of:
-            _make_minimal_reqs(directory, of, overwrite, verbose)
+            _make_minimal_reqs(directory, of, overwrite, verbose, ignore_errors)
     else:
-        _make_minimal_reqs(directory, outfile, overwrite, verbose)
+        _make_minimal_reqs(directory, outfile, overwrite, verbose, ignore_errors)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--directory", default=".", help="Specify the input directory. Default: '.'")
     parser.add_argument("-f", "--force", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-e", "--ignore-errors", action="store_true")
     parser.add_argument("-o", "--outfile", default="requirements.txt", help="Specify the output file. Default 'requirements.txt'")
     args = parser.parse_args()
 
@@ -83,7 +90,7 @@ def main():
         args.outfile = sys.stdout
 
     make_minimal_reqs(
-        directory, args.outfile, overwrite=args.force, verbose=args.verbose
+        directory, args.outfile, overwrite=args.force, verbose=args.verbose, ignore_errors=args.ignore_errors
     )
 
 

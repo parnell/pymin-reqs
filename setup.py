@@ -2,7 +2,7 @@
 
 from setuptools import setup
 
-setup(name='pymin_reqs',
+setup(name='pymin-reqs',
       version='1.0.0',
       description='',
       author='Parnell',
