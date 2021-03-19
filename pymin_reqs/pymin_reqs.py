@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import typing
 from collections import defaultdict
 from functools import lru_cache
 
@@ -63,18 +64,17 @@ class PackageResolver:
         return self._conda_freeze
 
 
-def _add_pkg_to_dict(d: dict, imp: str, pkg_res: PackageResolver = None):
-    pkgname = imp.lower()
-    # Check for endings that we can't import
-    if pkgname.endswith((".*", ".", "*", "_")):
+def _add_pkg_to_dict(d: dict, pot_pkg: str, pkg_res: PackageResolver = None):
+    pkgname = pot_pkg.lower()
+    # Check for files that we can't import
+    if pkgname.endswith((".*", ".", "*", "_")) or pkgname.startswith(("_")):
         return
-    if pkgname.startswith(("_")):
-        return
-    if imp in d:
-        pkg = d[imp]
+
+    if pot_pkg in d:
+        pkg = d[pot_pkg]
         pkg.count += 1
     else:
-        pkg = d[imp]
+        pkg = d[pot_pkg]
         pkg.name = pkgname
         pkg.pip_dist = misc.get_distribution(pkgname)
         if pkg.pip_dist:
@@ -82,11 +82,11 @@ def _add_pkg_to_dict(d: dict, imp: str, pkg_res: PackageResolver = None):
         if pkg_res and pkgname in pkg_res.conda_freeze:
             pkg.version = pkg_res.conda_freeze[pkgname].split("==")[1]
 
-    if "." in imp:
-        _add_pkg_to_dict(d, imp.split(".")[0], pkg_res)
+    if "." in pot_pkg:
+        _add_pkg_to_dict(d, pot_pkg.split(".")[0], pkg_res)
 
 
-def get_dir_installs(indir, needs_conda, ignore_errors=False):
+def get_dir_installs(indir: str, needs_conda: bool, ignore_errors: bool = False):
     pr = PackageResolver() if needs_conda else None
 
     imports = defaultdict(Package)
@@ -117,12 +117,12 @@ def get_dir_installs(indir, needs_conda, ignore_errors=False):
 
 
 def _make_minimal_reqs(
-    directory,
-    outpipe,
-    show_pip=True,
-    show_conda=False,
-    overwrite=False,
-    ignore_errors=False,
+    directory: str,
+    outpipe: typing.TextIO,
+    show_pip: bool = True,
+    show_conda: bool = False,
+    overwrite: bool = False,
+    ignore_errors: bool = False,
 ):
     pkgs = get_dir_installs(directory, show_conda, ignore_errors)
     logging.debug(f"# Found minimal imports")
@@ -147,12 +147,12 @@ def _make_minimal_reqs(
 
 
 def make_minimal_reqs(
-    directory,
+    directory: str,
     outfile,
-    show_pip=True,
-    show_conda=False,
-    overwrite=False,
-    ignore_errors=False,
+    show_pip: bool = True,
+    show_conda: bool = False,
+    overwrite: bool = False,
+    ignore_errors: bool = False,
 ):
     if isinstance(outfile, str):
         if not overwrite and os.path.exists(outfile):
