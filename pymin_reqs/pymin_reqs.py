@@ -138,12 +138,17 @@ def _make_minimal_reqs(
                 raise SkippableException(str(e)) from e
 
     # Print out our found packages
+    res = []
     for name, pkg in {k: pkgs[k] for k in sorted(pkgs)}.items():
         # Ignore our own project
         if self_pkg_names and name.lower() in self_pkg_names:
             continue
         if show_pip and pkg.pip_dist or show_conda and pkg.conda_dist:
-            outpipe.write(f"{pkg.name}=={pkg.version}\n")
+            res.append((pkg.name, pkg.version))
+
+    for r in res:
+        outpipe.write(f"{r[0]}=={r[1]}\n")
+    return res
 
 
 def make_minimal_reqs(
@@ -158,9 +163,11 @@ def make_minimal_reqs(
         if not overwrite and os.path.exists(outfile):
             raise IOError(f"Exception: File '{outfile}' already exists. Use --force to write over")
         with open(outfile, "w") as of:
-            _make_minimal_reqs(directory, of, show_pip, show_conda, overwrite, ignore_errors)
+            return _make_minimal_reqs(directory, of, show_pip, show_conda, overwrite, ignore_errors)
     else:
-        _make_minimal_reqs(directory, outfile, show_pip, show_conda, overwrite, ignore_errors)
+        return _make_minimal_reqs(
+            directory, outfile, show_pip, show_conda, overwrite, ignore_errors
+        )
 
 
 def main():
@@ -177,11 +184,22 @@ def main():
         action="store_true",
         help="Output conda requirements instead of pip. Use --pip --conda to show both",
     )
-    parser.add_argument("-p", "--pip", action="store_const", const=1, default=None)
+    parser.add_argument(
+        "-p",
+        "--pip",
+        action="store_const",
+        const=1,
+        default=None,
+        help="Show pip requirements. not required by default unless --conda is also specified",
+    )
 
-    parser.add_argument("-f", "--force", action="store_true")
-    parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("-e", "--ignore-errors", action="store_true")
+    parser.add_argument(
+        "-f", "--force", action="store_true", help="Force overwrite of the given file in --outfile"
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+    parser.add_argument(
+        "-e", "--ignore-errors", action="store_true", help="Ignore errors when possible"
+    )
     parser.add_argument(
         "-o",
         "--outfile",
