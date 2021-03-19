@@ -211,16 +211,10 @@ def main():
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
-    if not args.directory:
-        if not os.getenv("HISTFILE"):
-            raise Exception("History file was not found")
-        directory = os.getenv("HISTFILE")
-    else:
-        directory = args.directory
 
     try:
         make_minimal_reqs(
-            directory,
+            args.directory,
             args.outfile,
             show_pip=show_pip,
             show_conda=args.conda,
