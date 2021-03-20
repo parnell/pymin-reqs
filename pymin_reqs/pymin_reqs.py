@@ -75,6 +75,7 @@ def _add_pkg_to_dict(d: dict, pot_pkg: str, pkg_res: PackageResolver = None):
         pkg.count += 1
     else:
         pkg = d[pot_pkg]
+        pkg.count += 1
         pkg.name = pkgname
         pkg.pip_dist = misc.get_distribution(pkgname)
         if pkg.pip_dist:
@@ -123,6 +124,7 @@ def _make_minimal_reqs(
     show_conda: bool = False,
     overwrite: bool = False,
     ignore_errors: bool = False,
+    show_stats: bool = False,
 ):
     pkgs = get_dir_installs(directory, show_conda, ignore_errors)
     logging.debug(f"# Found minimal imports")
@@ -144,10 +146,10 @@ def _make_minimal_reqs(
         if self_pkg_names and name.lower() in self_pkg_names:
             continue
         if show_pip and pkg.pip_dist or show_conda and pkg.conda_dist:
-            res.append((pkg.name, pkg.version))
-
+            res.append((pkg.name, pkg.version, pkg.count))
     for r in res:
-        outpipe.write(f"{r[0]}=={r[1]}\n")
+        counts = "" if not show_stats else f" count={r[2]}"
+        outpipe.write(f"{r[0]}=={r[1]}{counts}\n")
     return res
 
 
@@ -158,16 +160,23 @@ def make_minimal_reqs(
     show_conda: bool = False,
     overwrite: bool = False,
     ignore_errors: bool = False,
+    show_stats: bool = False,
 ):
-    if isinstance(outfile, str):
-        if not overwrite and os.path.exists(outfile):
-            raise IOError(f"Exception: File '{outfile}' already exists. Use --force to write over")
-        with open(outfile, "w") as of:
-            return _make_minimal_reqs(directory, of, show_pip, show_conda, overwrite, ignore_errors)
-    else:
+    try:
+        of = open(outfile, "w") if isinstance(outfile, str) else outfile
+
         return _make_minimal_reqs(
-            directory, outfile, show_pip, show_conda, overwrite, ignore_errors
+            directory,
+            of,
+            show_pip=show_pip,
+            show_conda=show_conda,
+            overwrite=overwrite,
+            ignore_errors=ignore_errors,
+            show_stats=show_stats,
         )
+    finally:
+        if isinstance(outfile, str):
+            of.close()
 
 
 def main():
@@ -188,15 +197,23 @@ def main():
         "-p",
         "--pip",
         action="store_const",
-        const=1,
         default=None,
+        const=1,
         help="Show pip requirements. not required by default unless --conda is also specified",
     )
 
     parser.add_argument(
         "-f", "--force", action="store_true", help="Force overwrite of the given file in --outfile"
     )
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+    parser.add_argument("--counts", action="store_true", help="Show import counts for project. This number grows with each import on a from statement")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_const",
+        help="Verbose mode",
+        default=logging.INFO,
+        const=logging.DEBUG,
+    )
     parser.add_argument(
         "-e", "--ignore-errors", action="store_true", help="Ignore errors when possible"
     )
@@ -209,8 +226,7 @@ def main():
     args = parser.parse_args()
     show_pip = not args.conda or args.pip == 1
 
-    if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=args.verbose)
 
     try:
         make_minimal_reqs(
@@ -220,6 +236,7 @@ def main():
             show_conda=args.conda,
             overwrite=args.force,
             ignore_errors=args.ignore_errors,
+            show_stats=args.counts,
         )
     except SkippableException as e:
         logging.error(e)
