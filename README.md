@@ -1,6 +1,6 @@
 # pymin_reqs
 
-This module attempt to make a minimal `requirements.txt` file based on what imports are used inside of your project. These requirements are a subset of what would be given using `pip freeze` or `conda list --export` as these commands give everything that is used inside of the Python environment. This is useful if a project is used inside of a shared environment or if you don't want a cleaner requirements.txt that has your needed modules but not the included modules and their dependencies.
+This module attempt to make a minimal `requirements.txt` file based on the imports are used inside of the code of your project, `.py` files. These requirements are a subset of what would be given using `pip freeze` or `conda list --export` as these commands give everything that is used inside of the Python environment. This is useful if a project is used inside of a shared environment or if you want a cleaner `requirements.txt ` that only has your imported modules but not the dependencies, and sub-dependencies, of those modules.
 
 ## Install With Pip
 > `python3 -m pip install git+https://github.com/parnell/pymin-reqs`
