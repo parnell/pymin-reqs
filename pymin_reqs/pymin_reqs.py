@@ -286,7 +286,7 @@ def main():
             show_conda=args.conda,
             overwrite=args.force,
             ignore_errors=args.ignore_errors,
-            show_stats=args.counts,
+            show_stats=args.stats,
         )
     except SkippableException as e:
         logging.error(e)
