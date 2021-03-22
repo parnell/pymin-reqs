@@ -7,16 +7,16 @@ This module attempt to make a minimal `requirements.txt` file based on the impor
 
 ## Usage
 ```
-usage: pymin_reqs [-h] [-d DIRECTORY] [-c] [-p] [-f] [--counts] [-v] [-e] [-o OUTFILE]
+usage: pymin_reqs [-h] [-d DIRECTORY] [--conda] [--pip] [-f] [-s] [-v] [-e] [-o OUTFILE]
 
 optional arguments:
   -h, --help            show this help message and exit
   -d DIRECTORY, --directory DIRECTORY
                         Specify the input directory. Default: '.'
-  -c, --conda           Output conda requirements instead of pip. Use --pip --conda to show both
-  -p, --pip             Show pip requirements. not required by default unless --conda is also specified
+  --conda               Output conda requirements instead of pip. Use --pip --conda to show both
+  --pip                 Show pip requirements. not required by default unless --conda is also specified
   -f, --force           Force overwrite of the given file in --outfile
-  --counts              Show import counts for project. This number grows with each import on a from statement
+  -s, --stats           Show import locations and count of imported modules.
   -v, --verbose         Verbose mode
   -e, --ignore-errors   Ignore errors when possible
   -o OUTFILE, --outfile OUTFILE

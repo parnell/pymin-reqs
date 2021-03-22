@@ -8,13 +8,16 @@ import subprocess
 import sys
 import typing
 from collections import defaultdict
+from enum import Enum
 from functools import lru_cache
 
-import pip._internal.operations as pipops
 import pip._internal.utils.misc as misc
 import pkg_resources
-import setuptools
-from pip._internal.operations import freeze
+
+
+class Source(Enum):
+    pip = "pip"
+    conda = "conda"
 
 
 class SkippableException(Exception):
@@ -24,13 +27,19 @@ class SkippableException(Exception):
 class Package:
     def __init__(self):
         self.count = 0
-        self.pip_dist = None
-        self.conda_dist = None
+        self.source = ""
         self.name = None
         self.version = None
+        self.files = set()
 
     def __str__(self):
-        return f"(Package {self.name}, pip={self.pip_dist}, count={self.count}]"
+        return f"(Package {self.name}, source={self.source}, count={self.count}]"
+
+    def ispip(self):
+        return self.source == Source.pip
+
+    def isconda(self):
+        return self.source == Source.conda
 
 
 class PackageResolver:
@@ -43,8 +52,12 @@ class PackageResolver:
         if self._pip_freeze is not None:
             return self._pip_freeze
         self._pip_freeze = {}
-        for e in freeze.freeze():
-            self._pip_freeze[e.split("==")[0].lower()] = e
+        cmd = ["pip", "freeze"]
+        p = subprocess.check_output(cmd)
+        for l in p.decode("utf-8").split("\n"):
+            if "==" not in l:
+                continue
+            self._pip_freeze[l.split("==")[0].lower()] = l
         return self._pip_freeze
 
     @property
@@ -56,39 +69,58 @@ class PackageResolver:
         if "CONDA_DEFAULT_ENV" in os.environ:
             cmd = ["conda", "list", "--export"]
             p = subprocess.check_output(cmd)
-            lines = p.decode("utf-8").split("\n")
-            for l in lines:
+            for l in p.decode("utf-8").split("\n"):
                 if "==" not in l:
                     continue
                 self._conda_freeze[l.split("==")[0].lower()] = l
         return self._conda_freeze
 
 
-def _add_pkg_to_dict(d: dict, pot_pkg: str, pkg_res: PackageResolver = None):
+def get_version(string: str):
+    return string.split("==")[1]
+
+
+def _add_pkg_to_dict(
+    d: dict,
+    pkg_res: PackageResolver,
+    pot_pkg: str,
+    src_file: str,
+    show_pip: bool = True,
+    show_conda: bool = False,
+):
     pkgname = pot_pkg.lower()
     # Check for files that we can't import
     if pkgname.endswith((".*", ".", "*", "_")) or pkgname.startswith(("_")):
         return
-
+    src = os.path.relpath(src_file)
     if pot_pkg in d:
         pkg = d[pot_pkg]
         pkg.count += 1
+        pkg.files.add(src)
     else:
         pkg = d[pot_pkg]
         pkg.count += 1
         pkg.name = pkgname
-        pkg.pip_dist = misc.get_distribution(pkgname)
-        if pkg.pip_dist:
-            pkg.version = pkg.pip_dist.version
-        if pkg_res and pkgname in pkg_res.conda_freeze:
-            pkg.version = pkg_res.conda_freeze[pkgname].split("==")[1]
+        pkg.files.add(src)
+        if show_pip:
+            pkg.pip_dist = misc.get_distribution(pkgname)
+            pip_name = pkg.pip_dist.project_name.lower() if pkg.pip_dist else None
+            for n in [pkgname, pip_name]:
+                if n and n in pkg_res.pip_freeze:
+                    pkg.source = Source.pip
+                    pkg.version = get_version(pkg_res.pip_freeze[pip_name])
+                    logging.debug(f"  # Found pip package {pkg.name}=={pkg.version}")
+        if show_conda and pkgname in pkg_res.conda_freeze:
+            pkg.source = Source.conda
+            pkg.version = get_version(pkg_res.conda_freeze[pkgname])
+            logging.debug(f"  # Found conda package {pkg.name}=={pkg.version}")
 
     if "." in pot_pkg:
-        _add_pkg_to_dict(d, pot_pkg.split(".")[0], pkg_res)
+        _add_pkg_to_dict(d, pkg_res, pot_pkg.split(".")[0], src_file)
 
 
-def get_dir_installs(indir: str, needs_conda: bool, ignore_errors: bool = False):
-    pr = PackageResolver() if needs_conda else None
+def get_dir_installs(indir: str, show_pip: bool, show_conda: bool, ignore_errors: bool = False):
+    pr = PackageResolver()
 
     imports = defaultdict(Package)
     logging.debug(f"# Parsing Files")
@@ -106,13 +138,25 @@ def get_dir_installs(indir: str, needs_conda: bool, ignore_errors: bool = False)
             if isinstance(n, ast.Import):
                 logging.debug(f" - {[e.name for e in n.names]}")
                 for n2 in n.names:
-                    _add_pkg_to_dict(imports, n2.name, pr)
+                    _add_pkg_to_dict(
+                        imports, pr, n2.name, infile, show_pip=show_pip, show_conda=show_conda
+                    )
 
             elif isinstance(n, ast.ImportFrom):
                 logging.debug(f" - {n.module} imports {[e.name for e in n.names]}")
                 for n2 in n.names:
-                    _add_pkg_to_dict(imports, f"{n.module}.{n2.name}", pr)
-                    _add_pkg_to_dict(imports, n2.name, pr)
+
+                    _add_pkg_to_dict(
+                        imports,
+                        pr,
+                        f"{n.module}.{n2.name}",
+                        infile,
+                        show_pip=show_pip,
+                        show_conda=show_conda,
+                    )
+                    _add_pkg_to_dict(
+                        imports, pr, n2.name, infile, show_pip=show_pip, show_conda=show_conda
+                    )
 
     return imports
 
@@ -126,7 +170,9 @@ def _make_minimal_reqs(
     ignore_errors: bool = False,
     show_stats: bool = False,
 ):
-    pkgs = get_dir_installs(directory, show_conda, ignore_errors)
+    pkgs = get_dir_installs(
+        directory, show_pip=show_pip, show_conda=show_conda, ignore_errors=ignore_errors
+    )
     logging.debug(f"# Found minimal imports")
     self_pkg_names = None
     if os.path.exists(f"{directory}/setup.py"):
@@ -145,11 +191,12 @@ def _make_minimal_reqs(
         # Ignore our own project
         if self_pkg_names and name.lower() in self_pkg_names:
             continue
-        if show_pip and pkg.pip_dist or show_conda and pkg.conda_dist:
-            res.append((pkg.name, pkg.version, pkg.count))
-    for r in res:
-        counts = "" if not show_stats else f" count={r[2]}"
-        outpipe.write(f"{r[0]}=={r[1]}{counts}\n")
+        if show_pip and pkg.ispip() or show_conda and pkg.isconda():
+            if show_stats:
+                files = sorted(list(pkg.files))
+                outpipe.write(f"# {pkg.name} found in {files} count={len(files)}\n")
+            outpipe.write(f"{pkg.name}=={pkg.version}\n")
+
     return res
 
 
@@ -188,13 +235,11 @@ def main():
         help="Specify the input directory. Default: '.'",
     )
     parser.add_argument(
-        "-c",
         "--conda",
         action="store_true",
         help="Output conda requirements instead of pip. Use --pip --conda to show both",
     )
     parser.add_argument(
-        "-p",
         "--pip",
         action="store_const",
         default=None,
@@ -205,7 +250,12 @@ def main():
     parser.add_argument(
         "-f", "--force", action="store_true", help="Force overwrite of the given file in --outfile"
     )
-    parser.add_argument("--counts", action="store_true", help="Show import counts for project. This number grows with each import on a from statement")
+    parser.add_argument(
+        "-s",
+        "--stats",
+        action="store_true",
+        help="Show import locations and count of imported modules.",
+    )
     parser.add_argument(
         "-v",
         "--verbose",
@@ -224,7 +274,7 @@ def main():
         help="Specify the output file. Default 'requirements.txt'",
     )
     args = parser.parse_args()
-    show_pip = not args.conda or args.pip == 1
+    show_pip = args.pip == 1 or not args.conda
 
     logging.basicConfig(level=args.verbose)
 
